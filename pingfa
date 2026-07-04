@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>钢筋平法 3D 可视化 · 极致复刻</title>
+    <style>
+        /* ===== 全局重置 & 字体 ===== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', 'Microsoft YaHei', -apple-system, sans-serif;
+            background: #0f0e1a;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+        /* ===== 滚动条美化 ===== */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        ::-webkit-scrollbar-thumb { background: #6c5ce7; border-radius: 10px; }
+
+        /* ===== 3D 容器 ===== */
+        #canvas-container {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 0;
+        }
+
+        /* ===== 顶部导航栏 (玻璃态) ===== */
+        .navbar {
+            position: fixed;
+            top: 20px; left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            background: rgba(20, 18, 40, 0.75);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 60px;
+            padding: 8px 24px;
+            display: flex;
+            align-items: center;
+            gap: 28px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            pointer-events: auto;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            font-size: 18px;
+            background: linear-gradient(135deg, #a29bfe, #6c5ce7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            white-space: nowrap;
+        }
+        .logo span { font-size: 22px; -webkit-text-fill-color: initial; color: #a29bfe; }
+        .nav-tabs {
+            display: flex;
+            gap: 6px;
+            background: rgba(255,255,255,0.04);
+            padding: 4px;
+            border-radius: 40px;
+        }
+        .nav-tab {
+            padding: 6px 18px;
+            border-radius: 30px;
+            border: none;
+            background: transparent;
+            color: #999;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+        .nav-tab:hover { color: #fff; background: rgba(255,255,255,0.05); }
+        .nav-tab.active {
+            background: #6c5ce7;
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(108, 92, 231, 0.4);
+        }
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 40px;
+            padding: 4px 4px 4px 16px;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .input-group input {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 14px;
+            padding: 6px 0;
+            width: 180px;
+            outline: none;
+            font-weight: 500;
+        }
+        .input-group input::placeholder { color: #666; }
+        .input-group button {
+            background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+            border: none;
+            color: #fff;
+            padding: 6px 20px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 10px rgba(108, 92, 231, 0.3);
+        }
+        .input-group button:hover { transform: scale(1.04); opacity: 0.9; }
+
+        /* ===== 右侧参数面板 ===== */
+        .params-panel {
+            position: fixed;
+            right: 24px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 90;
+            background: rgba(16, 14, 36, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 20px;
+            padding: 22px 18px;
+            width: 200px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .param-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .param-item label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #aaa;
+            font-weight: 600;
+        }
+        .param-item .value {
+            font-size: 14px;
+            font-weight: 700;
+            color: #a29bfe;
+            float: right;
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 10px;
+            background: #2a2848;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #6c5ce7;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(108, 92, 231, 0.5);
+        }
+
+        /* ===== 底部剖切控制 ===== */
+        .clip-control {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 90;
+            background: rgba(16, 14, 36, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 60px;
+            padding: 12px 28px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            min-width: 280px;
+            justify-content: center;
+        }
+        .clip-control span {
+            font-size: 12px;
+            color: #aaa;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .clip-control input {
+            -webkit-appearance: none;
+            width: 200px;
+            height: 3px;
+            border-radius: 10px;
+            background: #2a2848;
+            outline: none;
+        }
+        .clip-control input::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #ff6b6b;
+            cursor: pointer;
+            box-shadow: 0 0 25px rgba(255, 107, 107, 0.4);
+            border: 2px solid #fff;
+        }
+
+        /* ===== AI 助手浮窗 (右下角) ===== */
+        .ai-fab {
+            position: fixed;
+            bottom: 110px;
+            right: 30px;
+            z-index: 200;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+            border: none;
+            color: #fff;
+            font-size: 26px;
+            cursor: pointer;
+            box-shadow: 0 8px 32px rgba(108, 92, 231, 0.4);
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .ai-fab:hover { transform: scale(1.1); }
+        .ai-popup {
+            position: fixed;
+            bottom: 180px;
+            right: 30px;
+            z-index: 199;
+            width: 340px;
+            max-height: 420px;
+            background: rgba(20, 18, 40, 0.85);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 24px;
+            padding: 20px;
+            display: none;
+            flex-direction: column;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.7);
+            transition: all 0.3s;
+        }
+        .ai-popup.show { display: flex; }
+        .ai-popup .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .ai-popup .header h3 {
+            font-size: 16px;
+            background: linear-gradient(135deg, #a29bfe, #6c5ce7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .ai-popup .header button {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .ai-messages {
+            flex: 1;
+            overflow-y: auto;
+            max-height: 280px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding-right: 4px;
+        }
+        .ai-msg {
+            padding: 10px 14px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.5;
+            max-width: 85%;
+        }
+        .ai-msg.bot {
+            background: rgba(108, 92, 231, 0.2);
+            border: 1px solid rgba(108, 92, 231, 0.15);
+            align-self: flex-start;
+            color: #ddd;
+        }
+        .ai-msg.user {
+            background: #6c5ce7;
+            align-self: flex-end;
+            color: #fff;
+        }
+        .ai-input {
+            display: flex;
+            gap: 8px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 40px;
+            padding: 4px 4px 4px 16px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .ai-input input {
+            background: transparent;
+            border: none;
+            color: #fff;
+            flex: 1;
+            outline: none;
+            font-size: 14px;
+        }
+        .ai-input button {
+            background: #6c5ce7;
+            border: none;
+            color: #fff;
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 1024px) {
+            .navbar { top: 10px; padding: 8px 16px; gap: 12px; border-radius: 30px; width: 96%; }
+            .input-group input { width: 120px; font-size: 12px; }
+            .params-panel { right: 10px; width: 160px; padding: 16px 12px; }
+            .clip-control { bottom: 20px; padding: 10px 16px; min-width: auto; width: 92%; flex-wrap: wrap; }
+            .clip-control input { width: 140px; }
+        }
+        @media (max-width: 640px) {
+            .nav-tabs { gap: 2px; }
+            .nav-tab { padding: 4px 12px; font-size: 12px; }
+            .logo { font-size: 14px; }
+            .input-group input { width: 80px; }
+            .params-panel { display: none; } /* 移动端隐藏参数 */
+            .ai-popup { width: 280px; right: 10px; bottom: 160px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ===== 3D 渲染容器 ===== -->
+    <div id="canvas-container"></div>
+
+    <!-- ===== 顶部导航 ===== -->
+    <nav class="navbar">
+        <div class="logo"><span>⬡</span> 平法·3D</div>
+        <div class="nav-tabs">
+            <button class="nav-tab active" data-type="beam">梁</button>
+            <button class="nav-tab" data-type="column">柱</button>
+            <button class="nav-tab" data-type="slab">板</button>
+        </div>
+        <div class="input-group">
+            <input id="componentInput" type="text" value="KL-1(2) 300x600" placeholder="输入平法标注...">
+            <button id="renderBtn">生成</button>
+        </div>
+    </nav>
+
+    <!-- ===== 右侧参数面板 ===== -->
+    <div class="params-panel">
+        <div class="param-item">
+            <label>保护层 <span class="value" id="coverVal">25</span>mm</label>
+            <input type="range" id="coverSlider" min="10" max="50" value="25">
+        </div>
+        <div class="param-item">
+            <label>箍筋间距 <span class="value" id="spacingVal">200</span>mm</label>
+            <input type="range" id="spacingSlider" min="100" max="300" step="10" value="200">
+        </div>
+        <div class="param-item">
+            <label>纵筋直径 <span class="value" id="diaVal">25</span>mm</label>
+            <input type="range" id="diaSlider" min="16" max="32" step="2" value="25">
+        </div>
+    </div>
+
+    <!-- ===== 底部剖切 ===== -->
+    <div class="clip-control">
+        <span>🔪 剖切</span>
+        <input type="range" id="clipSlider" min="-2.0" max="2.0" step="0.01" value="0">
+        <span id="clipLabel">0.00</span>
+    </div>
+
+    <!-- ===== AI 助手 ===== -->
+    <button class="ai-fab" id="aiFab">💬</button>
+    <div class="ai-popup" id="aiPopup">
+        <div class="header">
+            <h3>🤖 平法 AI 助手</h3>
+            <button id="aiClose">✕</button>
+        </div>
+        <div class="ai-messages" id="aiMessages">
+            <div class="ai-msg bot">您好！我是平法识图助手，请描述您的疑问。</div>
+        </div>
+        <div class="ai-input">
+            <input id="aiInput" placeholder="问图集规范...">
+            <button id="aiSend">发送</button>
+        </div>
+    </div>
+
+    <!-- ===== Three.js 导入 & 主逻辑 ===== -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+        // ==========================
+        //  1. 初始化场景 / 相机 / 渲染器
+        // ==========================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0f0e1a);
+
+        // 相机
+        const camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 100);
+        camera.position.set(5, 3.5, 7);
+        camera.lookAt(0, 0.8, 0);
+
+        // WebGL渲染
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.localClippingEnabled = true;
+        container.appendChild(renderer.domElement);
+
+        // CSS2D 标签渲染
+        const labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(container.clientWidth, container.clientHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0';
+        labelRenderer.domElement.style.left = '0';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        container.appendChild(labelRenderer.domElement);
+
+        // 控制器
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.autoRotate = false;
+        controls.target.set(0, 0.8, 0);
+        controls.update();
+
+        // ==========================
+        //  2. 灯光 & 环境
+        // ==========================
+        const ambient = new THREE.AmbientLight(0x40406b, 0.6);
+        scene.add(ambient);
+
+        const mainLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+        mainLight.position.set(4, 8, 6);
+        mainLight.castShadow = true;
+        mainLight.shadow.mapSize.width = 1024;
+        mainLight.shadow.mapSize.height = 1024;
+        scene.add(mainLight);
+
+        const fillLight = new THREE.DirectionalLight(0x8888ff, 0.6);
+        fillLight.position.set(-4, 2, -4);
+        scene.add(fillLight);
+
+        const rimLight = new THREE.DirectionalLight(0x6c5ce7, 0.4);
+        rimLight.position.set(0, -2, 5);
+        scene.add(rimLight);
+
+        // 地面网格
+        const gridHelper = new THREE.GridHelper(8, 12, 0x6c5ce7, 0x2a2848);
+        gridHelper.position.y = -0.01;
+        scene.add(gridHelper);
+
+        // ==========================
+        //  3. 核心变量 & 构建函数
+        // ==========================
+        let mainGroup = new THREE.Group();
+        scene.add(mainGroup);
+        let currentType = 'beam';
+        let clipValue = 0;
+
+        // 解析平法
+        function parseInput(str) {
+            const regex = /^([A-Za-z]+)-(\d+)\((\d+)\)\s+(\d+)x(\d+)/;
+            const m = str.match(regex);
+            if (!m) return { type: 'KL', id: '1', span: 2, w: 0.3, h: 0.6, valid: false };
+            return {
+                type: m[1], id: m[2], span: parseInt(m[3]),
+                w: parseFloat(m[4]) / 100,
+                h: parseFloat(m[5]) / 100,
+                valid: true
+            };
+        }
+
+        // 构建构件 (支持梁/柱/板)
+        function buildComponent(type, params, cover, spacing, dia) {
+            while(mainGroup.children.length) mainGroup.remove(mainGroup.children[0]);
+
+            const length = 4.0;
+            const w = params.w || 0.3;
+            const h = params.h || 0.6;
+            const coverVal = cover / 1000;
+            const barRad = dia / 2000;
+
+            // ---- 混凝土主体 ----
+            let geom;
+            let posY = 0;
+            if (type === 'beam') {
+                geom = new THREE.BoxGeometry(w, h, length);
+                posY = h / 2;
+            } else if (type === 'column') {
+                geom = new THREE.BoxGeometry(w, w, length * 0.8); 
+                posY = (length * 0.8) / 2;
+            } else { // slab
+                geom = new THREE.BoxGeometry(w * 2.5, 0.12, length * 1.2);
+                posY = 0.06;
+            }
+
+            const clipPlane = new THREE.Plane(new THREE.Vector3(1, 0, 0), clipValue);
+            const concreteMat = new THREE.MeshPhysicalMaterial({
+                color: 0x4a6fa5,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide,
+                roughness: 0.4,
+                metalness: 0.1,
+                clearcoat: 0.1,
+                clippingPlanes: [clipPlane],
+                clipShadows: true
+            });
+            const mesh = new THREE.Mesh(geom, concreteMat);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.position.y = posY;
+            mainGroup.add(mesh);
+
+            // 边框高光线
+            const edges = new THREE.EdgesGeometry(geom);
+            const edgeMat = new THREE.LineBasicMaterial({ color: 0x88ccff, transparent: true, opacity: 0.25 });
+            const wire = new THREE.LineSegments(edges, edgeMat);
+            wire.position.y = posY;
+            mainGroup.add(wire);
+
+            // ---- 钢筋系统 ----
+            const steelMat = new THREE.MeshStandardMaterial({
+                color: 0xffaa33,
+                emissive: 0x552200,
+                roughness: 0.4,
+                metalness: 0.9,
+                emissiveIntensity: 0.2
+            });
+
+            if (type === 'beam') {
+                // 纵筋位置 (8根)
+                const corners = [
+                    [-w/2 + coverVal, coverVal], [w/2 - coverVal, coverVal],
+                    [-w/2 + coverVal, h - coverVal], [w/2 - coverVal, h - coverVal],
+                    [0, coverVal], [0, h - coverVal]
+                ];
+                corners.forEach(([x, y]) => {
+                    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(barRad, barRad, length - 0.2, 8), steelMat);
+                    cyl.position.set(x, y, 0);
+                    cyl.rotation.x = Math.PI / 2;
+                    mainGroup.add(cyl);
+                });
+
+                // 箍筋 (矩形环)
+                const stirrupMat = new THREE.LineBasicMaterial({ color: 0x66ffcc });
+                [-1.5, 0, 1.5].forEach(z => {
+                    const pts = [
+                        new THREE.Vector3(-w/2 + coverVal, coverVal, z),
+                        new THREE.Vector3(w/2 - coverVal, coverVal, z),
+                        new THREE.Vector3(w/2 - coverVal, h - coverVal, z),
+                        new THREE.Vector3(-w/2 + coverVal, h - coverVal, z),
+                        new THREE.Vector3(-w/2 + coverVal, coverVal, z)
+                    ];
+                    const g = new THREE.BufferGeometry().setFromPoints(pts);
+                    mainGroup.add(new THREE.Line(g, stirrupMat));
+                });
+            } else if (type === 'column') {
+                // 柱纵筋 (角筋)
+                const corners = [
+                    [-w/2 + coverVal, -w/2 + coverVal], [w/2 - coverVal, -w/2 + coverVal],
+                    [-w/2 + coverVal, w/2 - coverVal], [w/2 - coverVal, w/2 - coverVal]
+                ];
+                const height = length * 0.8;
+                corners.forEach(([x, y]) => {
+                    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(barRad, barRad, height - 0.2, 8), steelMat);
+                    cyl.position.set(x, y, height/2);
+                    mainGroup.add(cyl);
+                });
+                // 箍筋
+                const stMat = new THREE.LineBasicMaterial({ color: 0x66ffcc });
+                [-1.2, 0, 1.2].forEach(z => {
+                    const pts = [
+                        new THREE.Vector3(-w/2 + coverVal, -w/2 + coverVal, z + height/2),
+                        new THREE.Vector3(w/2 - coverVal, -w/2 + coverVal, z + height/2),
+                        new THREE.Vector3(w/2 - coverVal, w/2 - coverVal, z + height/2),
+                        new THREE.Vector3(-w/2 + coverVal, w/2 - coverVal, z + height/2),
+                        new THREE.Vector3(-w/2 + coverVal, -w/2 + coverVal, z + height/2)
+                    ];
+                    const g = new THREE.BufferGeometry().setFromPoints(pts);
+                    mainGroup.add(new THREE.Line(g, stMat));
+                });
+            } else { // Slab
+                // 板底筋 双向
+                const slabW = w * 2.5;
+                const slabL = length * 1.2;
+                const spacingVal = spacing / 1000;
+                for (let x = -slabW/2 + 0.2; x < slabW/2; x += spacingVal) {
+                    const pts = [
+                        new THREE.Vector3(x, 0.06, -slabL/2),
+                        new THREE.Vector3(x, 0.06, slabL/2)
+                    ];
+                    const g = new THREE.BufferGeometry().setFromPoints(pts);
+                    const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xffaa33 }));
+                    mainGroup.add(line);
+                }
+                for (let z = -slabL/2 + 0.2; z < slabL/2; z += spacingVal) {
+                    const pts = [
+                        new THREE.Vector3(-slabW/2, 0.06, z),
+                        new THREE.Vector3(slabW/2, 0.06, z)
+                    ];
+                    const g = new THREE.BufferGeometry().setFromPoints(pts);
+                    const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xffaa33 }));
+                    mainGroup.add(line);
+                }
+            }
+
+            // ---- CSS2D 标签 ----
+            const labelDiv = document.createElement('div');
+            labelDiv.textContent = `${params.type}-${params.id} (${params.span}跨)`;
+            labelDiv.style.color = '#fff';
+            labelDiv.style.fontSize = '14px';
+            labelDiv.style.fontWeight = '700';
+            labelDiv.style.background = 'rgba(0,0,0,0.5)';
+            labelDiv.style.backdropFilter = 'blur(8px)';
+            labelDiv.style.padding = '4px 16px';
+            labelDiv.style.borderRadius = '30px';
+            labelDiv.style.border = '1px solid #6c5ce7';
+            labelDiv.style.letterSpacing = '0.5px';
+            const label = new CSS2DObject(labelDiv);
+            label.position.set(0, (type === 'beam' ? h : (type === 'column' ? length*0.8 : 0.12)) + 0.3, 0);
+            mainGroup.add(label);
+        }
+
+        // ==========================
+        //  4. 渲染触发器
+        // ==========================
+        function renderScene() {
+            const input = document.getElementById('componentInput').value;
+            const params = parseInput(input);
+            const cover = parseInt(document.getElementById('coverSlider').value);
+            const spacing = parseInt(document.getElementById('spacingSlider').value);
+            const dia = parseInt(document.getElementById('diaSlider').value);
+            
+            document.getElementById('coverVal').textContent = cover;
+            document.getElementById('spacingVal').textContent = spacing;
+            document.getElementById('diaVal').textContent = dia;
+
+            if (!params.valid) {
+                // 默认回退
+                buildComponent(currentType, { type: 'KL', id: '1', span: 2, w: 0.3, h: 0.6 }, cover, spacing, dia);
+                return;
+            }
+            buildComponent(currentType, params, cover, spacing, dia);
+        }
+
+        // ==========================
+        //  5. UI 事件绑定
+        // ==========================
+        document.getElementById('renderBtn').addEventListener('click', renderScene);
+
+        // 构件切换
+        document.querySelectorAll('.nav-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentType = tab.dataset.type;
+                // 更新输入框占位
+                if (currentType === 'beam') document.getElementById('componentInput').value = 'KL-1(2) 300x600';
+                else if (currentType === 'column') document.getElementById('componentInput').value = 'KZ-1(1) 400x400';
+                else document.getElementById('componentInput').value = 'LB-1(1) 300x300';
+                renderScene();
+            });
+        });
+
+        // 滑块联动
+        ['coverSlider', 'spacingSlider', 'diaSlider'].forEach(id => {
+            document.getElementById(id).addEventListener('input', renderScene);
+        });
+
+        // 剖切
+        document.getElementById('clipSlider').addEventListener('input', (e) => {
+            clipValue = parseFloat(e.target.value);
+            document.getElementById('clipLabel').textContent = clipValue.toFixed(2);
+            renderScene();
+        });
+
+        // ==========================
+        //  6. AI 助手 模拟 (UI 完美复刻)
+        // ==========================
+        document.getElementById('aiFab').addEventListener('click', () => {
+            document.getElementById('aiPopup').classList.toggle('show');
+        });
+        document.getElementById('aiClose').addEventListener('click', () => {
+            document.getElementById('aiPopup').classList.remove('show');
+        });
+        document.getElementById('aiSend').addEventListener('click', () => {
+            const input = document.getElementById('aiInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+            const container = document.getElementById('aiMessages');
+            const userDiv = document.createElement('div');
+            userDiv.className = 'ai-msg user';
+            userDiv.textContent = msg;
+            container.appendChild(userDiv);
+            input.value = '';
+            container.scrollTop = container.scrollHeight;
+
+            // 模拟 Bot 回复
+            setTimeout(() => {
+                const botDiv = document.createElement('div');
+                botDiv.className = 'ai-msg bot';
+                const replies = [
+                    '根据 22G101 图集，该部位锚固长度应取 max(LaE, 0.5hc+5d)。',
+                    '建议您检查保护层厚度是否满足规范最低要求（25mm）。',
+                    '梁端支座负筋伸入跨内长度为净跨的 1/3。',
+                    '已识别到您输入的平法标注，3D模型已同步更新。'
+                ];
+                botDiv.textContent = replies[Math.floor(Math.random() * replies.length)];
+                container.appendChild(botDiv);
+                container.scrollTop = container.scrollHeight;
+            }, 500);
+        });
+        document.getElementById('aiInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('aiSend').click();
+        });
+
+        // ==========================
+        //  7. 窗口自适应
+        // ==========================
+        window.addEventListener('resize', () => {
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+            labelRenderer.setSize(w, h);
+        });
+
+        // ==========================
+        //  8. 启动动画
+        // ==========================
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+        animate();
+
+        // 首次渲染
+        setTimeout(renderScene, 100);
+    </script>
+</body>
+</html>
